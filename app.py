@@ -1,4 +1,4 @@
-rom flask import Flask, request, Response, jsonify
+from flask import Flask, request, Response, jsonify
 
 app = Flask(__name__)
 last_event = {}
