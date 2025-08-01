@@ -1,23 +1,21 @@
 from flask import Flask, request, Response, jsonify
+import json
 
 app = Flask(__name__)
-last_event = {}
+last_payload = {}
 
-# POST endpoint: GPT sends push data here
+@app.route("/", methods=["GET"])
+def root():
+    return jsonify({"status": "ok", "message": "GPT MCP Relay Live"}), 200
+
 @app.route("/gpt-relay", methods=["POST"])
-def receive_push():
-    global last_event
-    last_event = request.json
-    return jsonify({"status": "ok"}), 200
+def gpt_relay():
+    global last_payload
+    last_payload = request.json
+    return jsonify({"status": "received"}), 200
 
-# GET endpoint: OpenAI calls this to verify the connector
-@app.route("/gpt-relay", methods=["GET"])
-def verify_push_endpoint():
-    return "Relay is active", 200
-
-# SSE endpoint: Streams last event for any frontend listener
 @app.route("/mcp", methods=["GET"])
-def stream_mcp():
-    def event_stream():
-        yield f"data: {last_event}\n\n"
-    return Response(event_stream(), mimetype="text/event-stream")
+def mcp_stream():
+    def stream():
+        yield f"data: {json.dumps(last_payload)}\n\n"
+    return Response(stream(), mimetype="text/event-stream")
