@@ -1,0 +1,87 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "GPT MCP Relay Connector",
+    "description": "Custom connector for the GPT-MCP relay service hosted on Render. This connector allows you to send a prompt to the relay and receive the relay's response.",
+    "version": "1.0.0"
+  },
+  "host": "gpt-mcp-relay.onrender.com",
+  "basePath": "/",
+  "schemes": ["https"],
+  "securityDefinitions": {
+    "apiKeyHeader": {
+      "type": "apiKey",
+      "name": "X-API-Key",
+      "in": "header",
+      "description": "Provide your API key for authentication."
+    }
+  },
+  "security": [
+    {
+      "apiKeyHeader": []
+    }
+  ],
+  "paths": {
+    "/": {
+      "post": {
+        "summary": "Invoke the GPT-MCP relay",
+        "description": "Sends a message to the GPT-MCP relay endpoint and returns the AI-generated response.",
+        "operationId": "CallGptMcpRelay",
+        "consumes": [
+          "application/json"
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "message": {
+                  "type": "string",
+                  "description": "The prompt or message to relay to the GPT-MCP service."
+                }
+              },
+              "required": ["message"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response from the GPT-MCP relay.",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "response": {
+                  "type": "string",
+                  "description": "The AI-generated response returned by the relay."
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unexpected error",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "string",
+                  "description": "Error message."
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyHeader": []
+          }
+        ]
+      }
+    }
+  }
+}
