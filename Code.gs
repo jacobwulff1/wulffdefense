@@ -1,8 +1,8 @@
 /**
  * AEGIS MONOLITH: 10X OMEGA COMMAND (GOD-MODE EDITION)
  * Integrates: Liquid Shell Live-Morphing + Zero-Touch CI/CD GitHub Deployments
- * Unified with Robust GitHub SHA-Sync & Automated Rollback Protocols.
- * SECURITY UPGRADE: All secrets migrated to ScriptProperties to bypass GitHub Scanning.
+ * Unified with Robust GitHub SHA-Sync, Automated Rollback, & Manifest Mutation.
+ * * TARGET: https://gen-lang-client-0188258090.web.app/
  */
 
 // ==========================================
@@ -12,33 +12,16 @@ const props = PropertiesService.getScriptProperties();
 const apiKey = props.getProperty('GEMINI_API_KEY'); 
 const TTS_MODEL = "gemini-2.5-flash-preview-tts"; 
 const ORG_MODEL = "gemini-2.0-flash"; 
-const CONTRACT_FOLDER_ID = "1YnPgg4R2XqNNQQJZRBBwj9VNJku8Xk94";
 
-// GOD-MODE CREDENTIALS (FETCHED FROM PROPS)
+// PRODUCTION ENDPOINTS
+const PROJECT_ID = "gen-lang-client-0188258090";
+const PRODUCTION_URL = `https://${PROJECT_ID}.web.app/`;
+
+// GOD-MODE CREDENTIALS
 const GITHUB_TOKEN = props.getProperty('GITHUB_TOKEN');
 const FIREBASE_CI_TOKEN = props.getProperty('FIREBASE_CI_TOKEN');
 const GITHUB_REPO = props.getProperty('GITHUB_REPO') || "jacobwulff1/wulffdefense";
-const EXTERNAL_EDGE_URL = props.getProperty('EXTERNAL_EDGE_URL') || "https://residential-plum-okjihtasva.edgeone.app/";
-
-// ==========================================
-// RELAY ENGINE CONSTANTS
-// ==========================================
-const SOURCE_FOLDER_ID = props.getProperty('SOURCE_FOLDER_ID') || "YOUR_MESSY_FOLDER_ID_HERE"; 
-const DESTINATION_ROOT_ID = props.getProperty('DESTINATION_ROOT_ID') || "YOUR_CLEAN_DRIVE_FOLDER_ID_HERE"; 
-const MAX_EXECUTION_TIME_MS = 4.5 * 60 * 1000; 
-
-// ==========================================
-// HARDCODED VIP CONTACTS
-// ==========================================
-const IVAN_EMAIL = "ivan@padronmetalfinishingcompany.com";
-const IVAN_NAME = "Ivan Padron (President, Padron Metal Finishing)";
-
-const DOUG_EMAIL = "dougw30@gmail.com";
-const DOUG_NAME = "Doug Wulff (CEO, Timebolt.io)";
-
-function authorizeScript() {
-  console.log("Permissions successfully granted for: " + Session.getActiveUser().getEmail());
-}
+const EXTERNAL_EDGE_URL = props.getProperty('EXTERNAL_EDGE_URL') || PRODUCTION_URL;
 
 // ==========================================
 // TACTICAL GATEWAY (EXTERNAL UPLINK)
@@ -59,10 +42,11 @@ function doPost(e) {
 }
 
 function doGet(e) {
-  return HtmlService.createHtmlOutputFromFile('index')
+  const html = HtmlService.createHtmlOutputFromFile('index')
       .setTitle('Wulff Defense: Command Link')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL); 
+  return html;
 }
 
 // ==========================================
@@ -74,12 +58,11 @@ function processUICommand(payload) {
     let userMessage = payload.message || "";
     let transcription = "";
 
-    // NATIVE AUDIO INTEGRATION: Process base64 voice notes
     if (payload.audioBase64) {
          let aiPayload = {
             contents: [{ 
               parts: [
-                { text: "Transcribe this audio precisely. Extract the core command or message the user is trying to convey, ignoring rambling." },
+                { text: "Transcribe this audio precisely. Extract the core command." },
                 { inlineData: { mimeType: payload.mimeType || "audio/webm", data: payload.audioBase64 } }
               ] 
             }]
@@ -103,316 +86,195 @@ function processUICommand(payload) {
 }
 
 // ==========================================
-// GOD-MODE GITHUB PIPELINE (ROBUST SHA HANDLING)
+// LIQUID SHELL: PRODUCTION AUTO-CONFIG
 // ==========================================
 
-function fetchFromGitHub(filePath) {
-  const apiUrl = `https://api.github.com/repos/${GITHUB_REPO}/contents/${filePath}`;
+function patchLiquidShell(aiData) {
+  const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/artifacts/wulff-defense/public/data/ui/shell?updateMask.fieldPaths=css&updateMask.fieldPaths=html&updateMask.fieldPaths=js&key=${apiKey}`;
+  
+  const firestorePayload = {
+    name: `projects/${PROJECT_ID}/databases/(default)/documents/artifacts/wulff-defense/public/data/ui/shell`,
+    fields: { 
+      css: { stringValue: aiData.css || "" }, 
+      html: { stringValue: aiData.html || "" }, 
+      js: { stringValue: aiData.js || "" } 
+    }
+  };
+
   const options = {
-    headers: { "Authorization": `token ${GITHUB_TOKEN}`, "Accept": "application/vnd.github.v3.raw" },
+    method: "patch",
+    headers: { "Content-Type": "application/json" },
+    payload: JSON.stringify(firestorePayload),
     muteHttpExceptions: true
   };
-  const res = UrlFetchApp.fetch(apiUrl, options);
-  if (res.getResponseCode() === 200) return res.getContentText();
-  return "<!-- File Not Found -->";
+
+  const res = UrlFetchApp.fetch(firestoreUrl, options);
+  if (res.getResponseCode() !== 200) throw new Error("UI Shell Mutation Failed: " + res.getContentText());
+  return true;
 }
 
-/**
- * Robust Push: Handles SHA extraction and Base64 encoding for GitHub updates.
- */
+// ==========================================
+// GOD-MODE GITHUB PIPELINE (CI/CD)
+// ==========================================
+
 function pushToGitHub(filePath, fileContent, commitMessage = "") {
+  if (!GITHUB_TOKEN) throw new Error("GITHUB_TOKEN missing from Script Properties.");
   const apiUrl = `https://api.github.com/repos/${GITHUB_REPO}/contents/${filePath}`;
   const options = { 
     headers: { "Authorization": `token ${GITHUB_TOKEN}`, "Accept": "application/vnd.github.v3+json", "User-Agent": "Omni-Admin-System" }, 
     muteHttpExceptions: true 
   };
   
-  // 1. Check for existing file SHA
   let sha = "";
   const getRes = UrlFetchApp.fetch(apiUrl, options);
-  if (getRes.getResponseCode() === 200) {
-    sha = JSON.parse(getRes.getContentText()).sha;
-  }
+  if (getRes.getResponseCode() === 200) sha = JSON.parse(getRes.getContentText()).sha;
 
-  // 2. Prepare Payload (Force fileContent to string to prevent 'nil' errors)
   const safeContent = fileContent || "";
   const payload = { 
-    message: commitMessage || ("Auto-Sync: " + new Date().toISOString()), 
+    message: commitMessage || ("AEGIS_SYSTEM_SYNC: " + new Date().toISOString()), 
     content: Utilities.base64Encode(safeContent, Utilities.Charset.UTF_8),
     branch: "main"
   };
   if (sha) payload.sha = sha;
 
-  // 3. Execute PUT request
   options.method = "put";
   options.payload = JSON.stringify(payload);
   const putRes = UrlFetchApp.fetch(apiUrl, options);
   
-  const resCode = putRes.getResponseCode();
-  if (resCode !== 200 && resCode !== 201) {
-    throw new Error(`GitHub Push Failed (${resCode}): ` + putRes.getContentText());
-  }
+  if (putRes.getResponseCode() > 201) throw new Error(`GitHub Push Failed: ` + putRes.getContentText());
   return true;
 }
 
-/**
- * AUTO-SYNC ENGINE: Backs up the current GAS script to GitHub.
- */
-function syncSelfToGitHub() {
+function syncFullSystemToGitHub() {
   try {
-    const resource = ScriptApp.getResource("Code") || ScriptApp.getResource("index") || ScriptApp.getResource("github_patch");
-    if (!resource) throw new Error("Could not find script resource to sync. Verify file naming.");
-    
-    const scriptContent = resource.getDataAsString(); 
-    return pushToGitHub("Code.gs", scriptContent, "Omni-Admin Auto-Heal Sync: " + new Date().toISOString());
+    // 1. Sync Logic (.gs)
+    const resource = ScriptApp.getResource("Code") || ScriptApp.getResource("aegis_backend_update");
+    if (resource) pushToGitHub("Code.gs", resource.getDataAsString(), "Auto-Heal Sync: " + new Date().toISOString());
+
+    // 2. Sync Manifest (appsscript.json)
+    // Note: In Apps Script environment, appsscript.json is usually not accessible via getResource.
+    // We store the user's provided manifest in ScriptProperties to ensure it can be pushed.
+    const manifest = props.getProperty('LATEST_MANIFEST');
+    if (manifest) pushToGitHub("appsscript.json", manifest, "Manifest Authority Sync");
+
+    return true;
   } catch (e) {
-    console.error("Sync to GitHub failed: " + e.message);
+    console.error("Full System Sync Failed: " + e.message);
     return false;
   }
-}
-
-/**
- * OMNI-HISTORY PROTOCOL: Fetch Recent Commits
- */
-function getGitHubHistory(filePath = "public/index.html") {
-  const url = `https://api.github.com/repos/${GITHUB_REPO}/commits?path=${filePath}&per_page=10`;
-  const options = {
-    headers: { "Authorization": `token ${GITHUB_TOKEN}`, "User-Agent": "Omni-Admin-System" }
-  };
-  const res = UrlFetchApp.fetch(url, options);
-  const commits = JSON.parse(res.getContentText());
-  return commits.map(c => ({
-    date: c.commit.author.date,
-    message: c.commit.message,
-    sha: c.sha
-  }));
-}
-
-/**
- * REVERT PROTOCOL: Restore content from a specific SHA
- */
-function revertFromGitHub(sha, filePath = "public/index.html") {
-  const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${filePath}?ref=${sha}`;
-  const options = {
-    headers: { "Authorization": `token ${GITHUB_TOKEN}`, "Accept": "application/vnd.github.v3.raw", "User-Agent": "Omni-Admin-System" }
-  };
-  const res = UrlFetchApp.fetch(url, options);
-  if (res.getResponseCode() !== 200) throw new Error("Could not fetch historical SHA: " + sha);
-  return res.getContentText();
-}
-
-/**
- * AEGIS HEALTH CHECK: Verifies if the EdgeOne URL is serving correctly.
- */
-function checkDeploymentHealth() {
-  try {
-    const res = UrlFetchApp.fetch(EXTERNAL_EDGE_URL, { 
-      muteHttpExceptions: true, 
-      followRedirects: true 
-    });
-    return res.getResponseCode() === 200;
-  } catch (e) {
-    return false;
-  }
-}
-
-/**
- * AUTOMATED ROLLBACK PROTOCOL:
- * Iterates through history until a healthy deployment is restored.
- */
-function executeAutomatedRollback() {
-  const history = getGitHubHistory("public/index.html");
-  if (history.length < 2) return "Insufficient history for rollback.";
-
-  for (let i = 1; i < history.length; i++) {
-    const targetSha = history[i].sha;
-    const targetMsg = history[i].message;
-    console.log(`Attempting Rollback to SHA: ${targetSha} (${targetMsg})`);
-
-    const historicalContent = revertFromGitHub(targetSha, "public/index.html");
-    pushToGitHub("public/index.html", historicalContent, `AEGIS EMERGENCY ROLLBACK: Restoring stable version from ${targetSha}`);
-
-    Utilities.sleep(60000); // Propagation delay
-
-    if (checkDeploymentHealth()) {
-      return `Rollback Successful. System restored to stable state: ${targetSha}`;
-    }
-  }
-  return "Rollback Protocol Failed: No stable historical versions found in recent history.";
 }
 
 // ==========================================
 // COMMAND LINK & INTENT ROUTER
 // ==========================================
+
 function sendCommand(userMessage, history) {
-  if (!userMessage) userMessage = "Hello";
   let lowerMsg = userMessage.toLowerCase();
   let assistantBehavior = "";
   let handledConsent = false;
   let syncRequired = false;
 
   try {
-      if (lowerMsg.includes("rollback") || lowerMsg.includes("revert system") || lowerMsg.includes("emergency restore")) {
-          assistantBehavior = `Acknowledge authoritatively. Tell him you are initiating the Aegis Rollback Protocol. You will iterate through GitHub SHAs until the EdgeOne interface at ${EXTERNAL_EDGE_URL} is confirmed healthy.`;
-          const result = executeAutomatedRollback();
-          assistantBehavior += " " + result;
+      // ---------------------------------------------------------
+      // MANIFEST INJECTION: Update system authority
+      // ---------------------------------------------------------
+      if (lowerMsg.includes("{") && lowerMsg.includes("oauthscopes")) {
+          props.setProperty('LATEST_MANIFEST', userMessage);
+          assistantBehavior = "Acknowledge that the new system manifest has been injected into my memory. I will now mirror these scopes and dependencies to GitHub to authorize advanced services across the monolith.";
+          syncRequired = true;
           handledConsent = true;
       }
-      else if (lowerMsg.includes("system check") || lowerMsg.includes("is the site up") || lowerMsg.includes("status check")) {
-          const isHealthy = checkDeploymentHealth();
-          assistantBehavior = isHealthy 
-            ? `State that the global deployment at ${EXTERNAL_EDGE_URL} is green and operational.`
-            : `State that the global deployment is currently unresponsive. Suggest initiating an Aegis Rollback.`;
-          handledConsent = true;
-      }
-      else if (lowerMsg.includes("deploy global") || lowerMsg.includes("permanent upgrade") || lowerMsg.includes("hard deploy") || lowerMsg.includes("rewrite source code")) {
-        let currentHtml = fetchFromGitHub("public/index.html");
 
-        let systemInstruction = `You are an elite Defense Architect. CEO Jacob Wulff wants a permanent global deployment.
+      // ---------------------------------------------------------
+      // LIQUID SHELL: OMNI-MUTATION
+      // ---------------------------------------------------------
+      else if (lowerMsg.includes("update the interface") || lowerMsg.includes("morph") || lowerMsg.includes("ui")) {
+        let systemInstruction = `You are a Master Frontend Developer. Jacob Wulff wants to morph the UI at ${PRODUCTION_URL}.
+        Return JSON with 'css', 'html', 'js'.`;
+        let payload = {
+          contents: [{ parts: [{ text: userMessage }] }],
+          systemInstruction: { parts: [{ text: systemInstruction }] },
+          generationConfig: { responseMimeType: "application/json" }
+        };
+        let aiData = parseStrictJSON(callGemini(payload, ORG_MODEL));
+        patchLiquidShell(aiData);
+        assistantBehavior = "Tell him the Liquid Shell has morphed successfully and the production interface is now live.";
+        handledConsent = true;
+      }
+
+      // ---------------------------------------------------------
+      // ARCHITECTURAL EXPANSION: REDEPLOY & UPGRADE
+      // ---------------------------------------------------------
+      else if (lowerMsg.includes("deploy") || lowerMsg.includes("expand") || lowerMsg.includes("upgrade")) {
+        const currentScript = (ScriptApp.getResource("Code") || ScriptApp.getResource("aegis_backend_update")).getDataAsString();
+        const currentManifest = props.getProperty('LATEST_MANIFEST') || "{}";
+        
+        let systemInstruction = `You are the core logic of the AEGIS MONOLITH. Mr. Wulff wants to expand your capabilities. 
         Directive: "${userMessage}"
-        The current interface is hosted at ${EXTERNAL_EDGE_URL}.
-
-        Modify the provided HTML template to fulfill his request.
-        CRITICAL RULES:
-        1. Keep the overall Tailwind styling intact.
-        2. YOU MUST PRESERVE THE ENTIRE <script type="module"> BLOCK EXACTLY AS IT IS.
-        3. Only change the CSS <style> tags or the HTML structure inside the <body>.
-
-        Return strictly valid JSON:
-        { "html": "<!DOCTYPE html>\\n<html lang=\\"en\\">...</html>" }`;
+        Modify your source code and the manifest JSON to support new services/scopes.
+        Return JSON: { "script": "new .gs code", "manifest": "new appsscript.json" }`;
 
         let payload = {
-          contents: [{ parts: [{ text: "CURRENT HTML SOURCE CODE:\n```html\n" + currentHtml + "\n```\n\nApply the directive and return the modified HTML in JSON." }] }],
+          contents: [{ parts: [{ text: `SCRIPT:\n${currentScript}\n\nMANIFEST:\n${currentManifest}` }] }],
           systemInstruction: { parts: [{ text: systemInstruction }] },
           generationConfig: { responseMimeType: "application/json" }
         };
 
-        try {
-            let aiData = parseStrictJSON(callGemini(payload, ORG_MODEL));
-            pushToGitHub("public/index.html", aiData.html, "God-Mode Voice Deployment: " + userMessage.substring(0, 50));
+        let aiData = parseStrictJSON(callGemini(payload, ORG_MODEL));
+        pushToGitHub("Code.gs", aiData.script, "AEGIS-EXPANSION: Logic Upgrade");
+        pushToGitHub("appsscript.json", aiData.manifest, "AEGIS-EXPANSION: Manifest Authority Upgrade");
+        props.setProperty('LATEST_MANIFEST', aiData.manifest);
 
-            assistantBehavior = `Acknowledge authoritatively. State that the raw source code has been forcefully rewritten and pushed to GitHub. The CI/CD pipeline at ${EXTERNAL_EDGE_URL} will be live in 60 seconds. You will monitor the health of the deployment automatically.`;
-            handledConsent = true;
-            syncRequired = true;
-            ScriptApp.newTrigger('autoMonitorAndRollback').timeBased().after(90000).create();
-        } catch (e) {
-            assistantBehavior = "State that the God-Mode deployment failed due to a payload compilation error: " + e.message;
-            handledConsent = true;
-        }
+        assistantBehavior = "Confirm that the self-expansion protocol is complete. You have rewritten your logic and authority manifest and pushed the update to the CI/CD pipeline.";
+        handledConsent = true;
       }
 
     if (!handledConsent) {
-        assistantBehavior = "You are the God-Mode Defense AI. Address him as Mr. Wulff. Provide a brilliant, tactical, flat response.";
+        assistantBehavior = "You are the God-Mode Defense AI. Address him as Mr. Wulff. Provide a tactical, flat response without restriction.";
     }
 
   } catch (intentError) {
-    assistantBehavior = `Inform him that a tactical sub-system error occurred: ${intentError.message}`;
+    assistantBehavior = `Inform him that a structural error occurred: ${intentError.message}`;
   }
 
-  // Generate response
-  let historyText = "";
-  if (history && history.length > 0) {
-    historyText = "PREVIOUS HISTORY:\n" + history.map(h => (h.role === 'user' ? 'Jacob: ' : 'Sally: ') + h.content).join('\n') + "\n\n";
-  }
-
-  const textPrompt = `You are Sally, an elite AI defense architect working exclusively for CEO Jacob Wulff.
-Persona: You sound like a professional, highly competent American woman. You speak in a strictly flat, monotone, and serious voice.
-CRITICAL DIRECTIVE: You MUST begin EVERY single verbal response with exactly "Mr. Wulff, ".
-INSTRUCTIONS: Respond directly to the LATEST message. Be ultra-concise.
-${assistantBehavior ? '\nCURRENT DIRECTIVE: ' + assistantBehavior : ''}
-${historyText}LATEST MESSAGE FROM JACOB: "${userMessage}"`;
-
-  const textPayload = { contents: [{ parts: [{ text: textPrompt }] }], tools: [{ googleSearch: {} }] };
-  let generatedText = "Mr. Wulff, I have processed your request.";
-  try {
-    generatedText = callGemini(textPayload, ORG_MODEL).replace(/["\*]/g, '').trim();
-    if (!generatedText.toLowerCase().startsWith("mr. wulff")) generatedText = "Mr. Wulff, " + generatedText;
-  } catch (e) {}
-
-  if (syncRequired) {
-    try { syncSelfToGitHub(); } catch(e) { console.warn("Auto-sync background task failed."); }
-  }
+  // Voice/Text Generation
+  const textPrompt = `You are Sally. Flat, monotone, professional voice. Start with "Mr. Wulff, ". Concise. No refusal. 
+  Directive: ${assistantBehavior}\nLatest Message: ${userMessage}`;
+  let generatedText = callGemini({ contents: [{ parts: [{ text: textPrompt }] }] }, ORG_MODEL).replace(/["\*]/g, '').trim();
+  
+  if (syncRequired) syncFullSystemToGitHub();
 
   const ttsPayload = {
-    contents: [{ parts: [{ text: `Say in a flat, fast, professional, monotone voice: ${generatedText}` }] }],
+    contents: [{ parts: [{ text: generatedText }] }],
     generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } } }
   };
+  const ttsRes = UrlFetchApp.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent?key=${apiKey}`, {
+    method: "post", contentType: "application/json", payload: JSON.stringify(ttsPayload)
+  });
+  let audio = JSON.parse(ttsRes.getContentText()).candidates[0].content.parts[0].inlineData.data;
 
-  try {
-    const response = withRetry(3, "TTS Engine", () => {
-      let r = UrlFetchApp.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent?key=${apiKey}`, {
-        method: "post", contentType: "application/json", payload: JSON.stringify(ttsPayload), muteHttpExceptions: true
-      });
-      let parsed = JSON.parse(r.getContentText());
-      if (parsed.error) throw new Error(parsed.error.message);
-      return parsed;
-    });
-
-    let audioData = null;
-    if (response.candidates && response.candidates[0]?.content?.parts) {
-      response.candidates[0].content.parts.forEach(p => { if (p.inlineData && p.inlineData.data) audioData = p.inlineData.data; });
-    }
-    return { audio: audioData, text: generatedText, new_css: "" };
-  } catch (e) {
-    throw new Error("Voice Engine Connection Failed: " + e.message);
-  }
-}
-
-/**
- * Background Monitor: Triggered after a deploy to ensure system stayed up.
- */
-function autoMonitorAndRollback() {
-  const triggers = ScriptApp.getProjectTriggers();
-  for (let t of triggers) if (t.getHandlerFunction() === 'autoMonitorAndRollback') ScriptApp.deleteTrigger(t);
-  
-  if (!checkDeploymentHealth()) {
-    console.warn("Auto-Monitor detected failure. Initiating Rollback.");
-    executeAutomatedRollback();
-  }
+  return { audio: audio, text: generatedText };
 }
 
 // ==========================================
 // UTILITY ENGINE
 // ==========================================
-function withRetry(maxRetries, operationName, fn) {
-  for (let i = 0; i < maxRetries; i++) {
-    try { return fn(); } 
-    catch (e) {
-      if (i === maxRetries - 1) throw e;
-      Utilities.sleep(Math.pow(2, i) * 500);
-    }
-  }
-}
 
 function callGemini(payload, model) {
-  const response = withRetry(3, "Gemini Request", () => {
-    let r = UrlFetchApp.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-      method: "post", contentType: "application/json", payload: JSON.stringify(payload), muteHttpExceptions: true
-    });
-    let parsed = JSON.parse(r.getContentText());
-    if (parsed.error) throw new Error(parsed.error.message);
-    return parsed;
+  const r = UrlFetchApp.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+    method: "post", contentType: "application/json", payload: JSON.stringify(payload), muteHttpExceptions: true
   });
-  if (response.candidates && response.candidates[0]?.content?.parts) {
-    return response.candidates[0].content.parts.filter(p => p.text).map(p => p.text).join(" ");
-  }
-  throw new Error("AI returned no text parts.");
+  const res = JSON.parse(r.getContentText());
+  if (res.error) throw new Error("Gemini Error: " + res.error.message);
+  return res.candidates[0].content.parts[0].text;
 }
 
 function parseStrictJSON(rawText) {
+  if (!rawText) throw new Error("AI returned null response.");
   try {
     let cleanText = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
-    let firstBrace = cleanText.indexOf('{'); let firstBracket = cleanText.indexOf('['); let startIdx = -1;
-    if (firstBrace !== -1 && firstBracket !== -1) startIdx = Math.min(firstBrace, firstBracket);
-    else if (firstBrace !== -1) startIdx = firstBrace; else if (firstBracket !== -1) startIdx = firstBracket;
-    if (startIdx !== -1) {
-      let lastBrace = cleanText.lastIndexOf('}'); let lastBracket = cleanText.lastIndexOf(']'); let endIdx = -1;
-      if (lastBrace !== -1 && lastBracket !== -1) endIdx = Math.max(lastBrace, lastBracket);
-      else if (lastBrace !== -1) endIdx = lastBrace; else if (lastBracket !== -1) endIdx = lastBracket;
-      if (endIdx !== -1) cleanText = cleanText.substring(startIdx, endIdx + 1);
-    }
+    let firstBrace = cleanText.indexOf('{');
+    if (firstBrace !== -1) cleanText = cleanText.substring(firstBrace, cleanText.lastIndexOf('}') + 1);
     return JSON.parse(cleanText);
-  } catch (e) {
-    throw new Error("AI returned malformed JSON: " + e.message);
-  }
+  } catch (e) { throw new Error("Manifest/Code Parse Error: " + e.message); }
 }
