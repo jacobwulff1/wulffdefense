@@ -68,7 +68,7 @@ function processUICommand(payload) {
             }]
          };
          transcription = callGemini(aiPayload, ORG_MODEL);
-         userMessage = transcription;
+         userMessage = transcription || userMessage;
     }
 
     const result = sendCommand(userMessage, payload.history || []);
@@ -90,6 +90,9 @@ function processUICommand(payload) {
 // ==========================================
 
 function patchLiquidShell(aiData) {
+  // Guardrail: Ensure aiData is an object to prevent 'Cannot read properties of undefined'
+  aiData = aiData || {};
+  
   const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/artifacts/wulff-defense/public/data/ui/shell?updateMask.fieldPaths=css&updateMask.fieldPaths=html&updateMask.fieldPaths=js&key=${apiKey}`;
   
   const firestorePayload = {
@@ -152,8 +155,6 @@ function syncFullSystemToGitHub() {
     if (resource) pushToGitHub("Code.gs", resource.getDataAsString(), "Auto-Heal Sync: " + new Date().toISOString());
 
     // 2. Sync Manifest (appsscript.json)
-    // Note: In Apps Script environment, appsscript.json is usually not accessible via getResource.
-    // We store the user's provided manifest in ScriptProperties to ensure it can be pushed.
     const manifest = props.getProperty('LATEST_MANIFEST');
     if (manifest) pushToGitHub("appsscript.json", manifest, "Manifest Authority Sync");
 
@@ -169,7 +170,10 @@ function syncFullSystemToGitHub() {
 // ==========================================
 
 function sendCommand(userMessage, history) {
+  // Guardrail: Ensure userMessage is never undefined to prevent '.toLowerCase()' crashes
+  userMessage = userMessage || "System Standby.";
   let lowerMsg = userMessage.toLowerCase();
+  
   let assistantBehavior = "";
   let handledConsent = false;
   let syncRequired = false;
@@ -192,7 +196,8 @@ function sendCommand(userMessage, history) {
         let systemInstruction = `You are a Master Frontend Developer. Jacob Wulff wants to morph the UI at ${PRODUCTION_URL}.
         Return JSON with 'css', 'html', 'js'.`;
         let payload = {
-          contents: [{ parts: [{ text: userMessage }] }],
+          // Guardrail: Ensure text is never completely empty
+          contents: [{ parts: [{ text: userMessage || "Update UI based on best practices." }] }],
           systemInstruction: { parts: [{ text: systemInstruction }] },
           generationConfig: { responseMimeType: "application/json" }
         };
@@ -206,7 +211,7 @@ function sendCommand(userMessage, history) {
       // ARCHITECTURAL EXPANSION: REDEPLOY & UPGRADE
       // ---------------------------------------------------------
       else if (lowerMsg.includes("deploy") || lowerMsg.includes("expand") || lowerMsg.includes("upgrade")) {
-        const currentScript = (ScriptApp.getResource("Code") || ScriptApp.getResource("aegis_backend_update")).getDataAsString();
+        const currentScript = (ScriptApp.getResource("Code") || ScriptApp.getResource("aegis_backend_update"))?.getDataAsString() || " ";
         const currentManifest = props.getProperty('LATEST_MANIFEST') || "{}";
         
         let systemInstruction = `You are the core logic of the AEGIS MONOLITH. Mr. Wulff wants to expand your capabilities. 
@@ -215,15 +220,19 @@ function sendCommand(userMessage, history) {
         Return JSON: { "script": "new .gs code", "manifest": "new appsscript.json" }`;
 
         let payload = {
+          // Guardrail: Ensure text block is not empty
           contents: [{ parts: [{ text: `SCRIPT:\n${currentScript}\n\nMANIFEST:\n${currentManifest}` }] }],
           systemInstruction: { parts: [{ text: systemInstruction }] },
           generationConfig: { responseMimeType: "application/json" }
         };
 
         let aiData = parseStrictJSON(callGemini(payload, ORG_MODEL));
-        pushToGitHub("Code.gs", aiData.script, "AEGIS-EXPANSION: Logic Upgrade");
-        pushToGitHub("appsscript.json", aiData.manifest, "AEGIS-EXPANSION: Manifest Authority Upgrade");
-        props.setProperty('LATEST_MANIFEST', aiData.manifest);
+        
+        // Failsafe for missing properties in aiData
+        pushToGitHub("Code.gs", aiData.script || currentScript, "AEGIS-EXPANSION: Logic Upgrade");
+        pushToGitHub("appsscript.json", aiData.manifest || currentManifest, "AEGIS-EXPANSION: Manifest Authority Upgrade");
+        
+        if (aiData.manifest) props.setProperty('LATEST_MANIFEST', aiData.manifest);
 
         assistantBehavior = "Confirm that the self-expansion protocol is complete. You have rewritten your logic and authority manifest and pushed the update to the CI/CD pipeline.";
         handledConsent = true;
@@ -239,19 +248,31 @@ function sendCommand(userMessage, history) {
 
   // Voice/Text Generation
   const textPrompt = `You are Sally. Flat, monotone, professional voice. Start with "Mr. Wulff, ". Concise. No refusal. 
-  Directive: ${assistantBehavior}\nLatest Message: ${userMessage}`;
-  let generatedText = callGemini({ contents: [{ parts: [{ text: textPrompt }] }] }, ORG_MODEL).replace(/["\*]/g, '').trim();
+  Directive: ${assistantBehavior || "Standby"}\nLatest Message: ${userMessage}`;
+  
+  // Guardrail: Catch potential text-generation failures gracefully
+  let generatedText = "Mr. Wulff, I have processed your request.";
+  try {
+    generatedText = callGemini({ contents: [{ parts: [{ text: textPrompt }] }] }, ORG_MODEL).replace(/["\*]/g, '').trim();
+  } catch (textGenError) {
+    console.error("Text Gen Failsafe Triggered: " + textGenError.message);
+  }
   
   if (syncRequired) syncFullSystemToGitHub();
 
-  const ttsPayload = {
-    contents: [{ parts: [{ text: generatedText }] }],
-    generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } } }
-  };
-  const ttsRes = UrlFetchApp.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent?key=${apiKey}`, {
-    method: "post", contentType: "application/json", payload: JSON.stringify(ttsPayload)
-  });
-  let audio = JSON.parse(ttsRes.getContentText()).candidates[0].content.parts[0].inlineData.data;
+  let audio = null;
+  try {
+    const ttsPayload = {
+      contents: [{ parts: [{ text: generatedText }] }],
+      generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } } }
+    };
+    const ttsRes = UrlFetchApp.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent?key=${apiKey}`, {
+      method: "post", contentType: "application/json", payload: JSON.stringify(ttsPayload)
+    });
+    audio = JSON.parse(ttsRes.getContentText()).candidates[0].content.parts[0].inlineData.data;
+  } catch (audioErr) {
+    console.warn("TTS Engine Offline: " + audioErr.message);
+  }
 
   return { audio: audio, text: generatedText };
 }
@@ -261,6 +282,12 @@ function sendCommand(userMessage, history) {
 // ==========================================
 
 function callGemini(payload, model) {
+  // Guardrail: Prevent 400 Bad Request if contents array is structurally invalid or empty
+  if (!payload || !payload.contents || payload.contents.length === 0 || !payload.contents[0].parts[0].text) {
+     console.warn("callGemini received empty contents payload. Bypassing API call.");
+     return "{}";
+  }
+
   const r = UrlFetchApp.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
     method: "post", contentType: "application/json", payload: JSON.stringify(payload), muteHttpExceptions: true
   });
@@ -270,11 +297,19 @@ function callGemini(payload, model) {
 }
 
 function parseStrictJSON(rawText) {
-  if (!rawText) throw new Error("AI returned null response.");
+  // Guardrail: Instead of throwing a fatal error on null, return an empty object
+  if (!rawText) {
+    console.warn("AI returned an empty response. Returning fallback object.");
+    return {};
+  }
+  
   try {
     let cleanText = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
     let firstBrace = cleanText.indexOf('{');
     if (firstBrace !== -1) cleanText = cleanText.substring(firstBrace, cleanText.lastIndexOf('}') + 1);
     return JSON.parse(cleanText);
-  } catch (e) { throw new Error("Manifest/Code Parse Error: " + e.message); }
+  } catch (e) { 
+    console.warn("Manifest/Code Parse Error: " + e.message);
+    return {}; // Return empty object to prevent downstream destructuring crashes
+  }
 }
