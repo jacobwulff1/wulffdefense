@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Command">
+    <title>Wulff Defense: Missile Command</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style id="liquid-ui-styles"></style>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Space+Mono&display=swap');
+
+        body { 
+            font-family: 'Rajdhani', sans-serif; 
+            background-color: #030303; 
+            color: #e0e0e0; 
+            overflow: hidden; 
+            touch-action: manipulation;
+        }
+        .mono-text { font-family: 'Space Mono', monospace; }
+
+        /* Tactical Grid Background */
+        .bg-grid {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background-size: 50px 50px;
+            background-image:
+                linear-gradient(to right, rgba(59, 130, 246, 0.05) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(59, 130, 246, 0.05) 1px, transparent 1px);
+        }
+
+        /* Tactical Orb Animations */
+        .orb-container { position: relative; width: 160px; height: 160px; display: flex; justify-content: center; align-items: center; }
+        .orb { width: 100px; height: 100px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #3b82f6, #1e3a8a, #000000); box-shadow: 0 0 20px #1e3a8a, inset 0 0 20px rgba(255, 255, 255, 0.3); transition: all 0.3s ease; position: relative; z-index: 10; }
+        .orb.listening { background: radial-gradient(circle at 30% 30%, #ef4444, #991b1b, #000000); box-shadow: 0 0 40px #ef4444, inset 0 0 30px rgba(255, 255, 255, 0.6); transform: scale(1.05); animation: pulse-listen 1.5s infinite alternate; }
+        .orb.processing { background: radial-gradient(circle at 30% 30%, #60a5fa, #2563eb, #000000); box-shadow: 0 0 40px #3b82f6, inset 0 0 30px rgba(255, 255, 255, 0.6); transform: scale(1.05); animation: pulse-processing 0.5s infinite alternate; }
+        .orb.speaking { background: radial-gradient(circle at 30% 30%, #fca5a5, #ef4444, #000000); box-shadow: 0 0 50px #ef4444, inset 0 0 40px rgba(255, 255, 255, 0.8); animation: pulse-speak 0.15s infinite alternate; }
+        
+        .ring { position: absolute; border-radius: 50%; border: 1px dashed rgba(59, 130, 246, 0.4); width: 120%; height: 120%; animation: rotate-ring 15s linear infinite; }
+        .ring:nth-child(2) { width: 145%; height: 145%; border: 1px solid rgba(239, 68, 68, 0.2); animation: rotate-ring 25s linear infinite reverse; }
+
+        @keyframes pulse-listen { 0% { transform: scale(1); box-shadow: 0 0 20px #dc2626; } 100% { transform: scale(1.1); box-shadow: 0 0 50px #ef4444; } }
+        @keyframes pulse-processing { 0% { transform: scale(1); box-shadow: 0 0 20px #2563eb; } 100% { transform: scale(1.1); box-shadow: 0 0 50px #60a5fa; } }
+        @keyframes pulse-speak { 0% { transform: scale(1.05); } 100% { transform: scale(1.15); box-shadow: 0 0 60px #ef4444; } }
+        @keyframes rotate-ring { 0% { transform: rotate(0deg) scale(1); } 50% { transform: rotate(180deg) scale(1.02); } 100% { transform: rotate(360deg) scale(1); } }
+
+        /* UI Elements */
+        .chat-container { height: calc(100vh - 380px); scrollbar-width: thin; scrollbar-color: #374151 #000; }
+        .chat-container::-webkit-scrollbar { width: 6px; }
+        .chat-container::-webkit-scrollbar-track { background: #000; }
+        .chat-container::-webkit-scrollbar-thumb { background-color: #374151; border-radius: 10px; }
+        
+        .message { opacity: 0; transform: translateY(10px); animation: slideUp 0.3s forwards; }
+        @keyframes slideUp { to { opacity: 1; transform: translateY(0); } }
+        
+        .glass-panel { background: rgba(17, 24, 39, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(75, 85, 99, 0.4); box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+        .btn-glow { position: relative; overflow: hidden; transition: all 0.3s; border: 1px solid transparent; }
+        .btn-glow:hover:not(:disabled) { box-shadow: 0 0 15px currentColor; transform: translateY(-1px); border-color: currentColor; }
+        .btn-glow:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .typing-dot { animation: typing 1.4s infinite ease-in-out both; }
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes typing { 0%, 80%, 100% { transform: scale(0); opacity: 0.3; } 40% { transform: scale(1); opacity: 1; } }
+        
+        .mic-active { color: #ef4444 !important; border-color: #ef4444 !important; animation: pulse-mic 1.5s infinite; background-color: rgba(239, 68, 68, 0.1) !important; }
+        @keyframes pulse-mic { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+
+        .scanlines {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1));
+            background-size: 100% 4px; pointer-events: none; z-index: 50; opacity: 0.3;
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen relative text-gray-200">
+    <div class="bg-grid"></div>
+    <div class="scanlines"></div>
+
+    <header class="p-4 glass-panel flex justify-between items-center border-b-2 border-red-600/50 z-20">
+        <div class="flex items-center space-x-4">
+            <div class="w-10 h-10 rounded bg-gray-900 border border-gray-700 flex items-center justify-center">
+                <i class="fas fa-crosshairs text-red-500 text-xl"></i>
+            </div>
+            <div>
+                <h1 class="text-2xl font-bold tracking-widest text-white uppercase">Wulff Defense</h1>
+                <p class="text-xs text-blue-400 mono-text uppercase tracking-widest flex items-center">
+                    <i class="fas fa-satellite-dish mr-2 text-[10px]"></i> Tactical Missile Command
+                </p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-4 bg-gray-900 px-4 py-2 rounded border border-gray-700">
+            <div id="statusIndicator" class="flex items-center space-x-2">
+                <div class="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_#3b82f6] animate-pulse"></div>
+                <span class="text-xs text-gray-300 mono-text uppercase tracking-wider" id="statusText">System Secure</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 flex flex-col items-center justify-center p-6 relative z-10" id="mainContainer">
+        <div class="orb-container mb-6 cursor-pointer" id="orbContainer" title="Click to interrupt audio">
+            <div class="ring"></div>
+            <div class="ring"></div>
+            <div id="sallyOrb" class="orb"></div>
+        </div>
+
+        <!-- DYNAMIC HTML WORKSPACE: This is where Phase 2 HTML elements will spawn -->
+        <div id="liquid-html-workspace" class="w-full max-w-4xl z-20 relative empty:hidden mb-4 transition-all duration-500"></div>
+
+        <div class="w-full max-w-4xl flex-1 glass-panel rounded-xl flex flex-col overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.9)]">
+            <div class="px-4 py-2 bg-gray-900 border-b border-gray-800 flex justify-between items-center">
+                <span class="text-[10px] mono-text text-gray-500">ENCRYPTED PROXY LINK :: AES-256</span>
+                <span class="text-[10px] mono-text text-green-500 font-bold tracking-widest">FIREBASE HOSTING: ACTIVE</span>
+            </div>
+
+            <div id="chatLog" class="flex-1 p-6 chat-container overflow-y-auto flex flex-col space-y-6">
+                <div class="message self-start max-w-[85%] flex items-start space-x-3">
+                    <div class="w-10 h-10 rounded bg-red-900/40 flex items-center justify-center border border-red-500/50 flex-shrink-0 shadow-[0_0_15px_rgba(239,68,68,0.2)]">
+                        <i class="fas fa-shield-halved text-red-500 text-sm"></i>
+                    </div>
+                    <div class="bg-gray-800/80 rounded-r-lg rounded-bl-lg p-5 border border-gray-700 shadow-lg relative overflow-hidden">
+                        <div class="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></div>
+                        <p class="text-gray-200 text-sm leading-relaxed font-medium">
+                            Good day, Mr. Wulff. The monolithic native Firebase deployment is fully operational. The Liquid Shell is actively monitoring for live UI updates. <br><br>
+                            I am actively monitoring your directives.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-5 bg-gray-950 border-t border-gray-800 flex items-center space-x-4">
+                <button id="btnMic" class="w-14 h-14 flex items-center justify-center bg-gray-900 border border-gray-700 hover:bg-gray-800 text-red-500 rounded-full btn-glow transition-all focus:outline-none flex-shrink-0 shadow-lg" title="Voice Command">
+                    <i class="fas fa-microphone text-lg"></i>
+                </button>
+                <div class="flex-1 relative">
+                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <i class="fas fa-terminal text-blue-500/50 text-xs"></i>
+                    </div>
+                    <input type="text" id="userInput" placeholder="Awaiting directives, Sir..." class="w-full bg-gray-900 border border-gray-700 text-white pl-10 pr-4 py-4 rounded-lg outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono text-sm placeholder-gray-600 shadow-inner">
+                </div>
+                <button id="btnSend" class="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold uppercase tracking-wider btn-glow flex items-center space-x-3 transition-colors shadow-lg">
+                    <span>Execute</span>
+                    <i class="fas fa-satellite-dish"></i>
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <audio id="audioPlayer" playsinline style="display: none;"></audio>
+
+    <script type="module">
+        // ==========================================
+        // LIQUID SHELL PROTOCOL PHASE 2 (FIREBASE WEBSOCKETS)
+        // ==========================================
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
+        import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCriCskbLYvm-i2mRRRQLEXfuXN5Js8lVE",
+            authDomain: "gen-lang-client-0188258090.firebaseapp.com",
+            projectId: "gen-lang-client-0188258090",
+            storageBucket: "gen-lang-client-0188258090.firebasestorage.app",
+            messagingSenderId: "861314504676",
+            appId: "1:861314504676:web:5292693415b57cb53a59f1",
+            measurementId: "G-L8DRVTHJFB"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app);
+        const db = getFirestore(app);
+
+        const appId = 'wulff-defense';
+        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzBZATH9eZwSX-WmNePWG7WtBUsuRsugGrfcYaWh5cqAGg6M0mGN6SoHJQ6YtEtlRcO/exec"; 
+
+        let lastExecutedHtml = "";
+        let lastExecutedJs = "";
+
+        function initLiquidShell() {
+            const shellDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'ui', 'shell');
+            
+            onSnapshot(shellDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    
+                    // 1. CSS INJECTION (Phase 1)
+                    if (data.css) {
+                        let dynamicStyle = document.getElementById('liquid-ui-styles');
+                        if (!dynamicStyle) {
+                            dynamicStyle = document.createElement('style');
+                            dynamicStyle.id = 'liquid-ui-styles';
+                            document.head.appendChild(dynamicStyle);
+                        }
+                        dynamicStyle.innerHTML = data.css;
+                    }
+
+                    // 2. HTML INJECTION (Phase 2 Upgrade)
+                    if (data.html && data.html !== lastExecutedHtml) {
+                        const workspace = document.getElementById('liquid-html-workspace');
+                        if (workspace) {
+                            workspace.innerHTML = data.html;
+                            lastExecutedHtml = data.html;
+                            appendMessage('system', '[LIQUID SHELL: DOM mutated with raw HTML payload.]');
+                        }
+                    }
+
+                    // 3. JAVASCRIPT INJECTION (Phase 2 Upgrade)
+                    if (data.js && data.js !== lastExecutedJs) {
+                        try {
+                            // Purge the old script so memory doesn't leak
+                            const oldScript = document.getElementById('liquid-js-payload');
+                            if (oldScript) oldScript.remove();
+
+                            // Inject and execute the new script in global scope
+                            const scriptEl = document.createElement('script');
+                            scriptEl.id = 'liquid-js-payload';
+                            scriptEl.textContent = data.js;
+                            document.body.appendChild(scriptEl);
+                            
+                            lastExecutedJs = data.js;
+                            appendMessage('system', '[LIQUID SHELL: Remote JavaScript execution successful.]');
+                        } catch (e) {
+                            console.error("Liquid Shell JS Error:", e);
+                            appendMessage('system', `[LIQUID SHELL ERROR: JS payload execution failed: ${e.message}]`);
+                        }
+                    }
+                }
+            }, (error) => {
+                console.error("Liquid Shell listener failed.", error);
+            });
+        }
+
+        initLiquidShell();
+
+        // ==========================================
+        // COMMAND LINK LOGIC
+        // ==========================================
+        const chatLog = document.getElementById('chatLog');
+        const userInput = document.getElementById('userInput');
+        const btnSend = document.getElementById('btnSend');
+        const sallyOrb = document.getElementById('sallyOrb');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const btnMic = document.getElementById('btnMic');
+        const statusText = document.getElementById('statusText');
+        
+        let isProcessing = false;
+        let isRecording = false;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let currentAudioUrl = null;
+        let conversationHistory = [];
+
+        // SILENT AUDIO DRIVER UNLOCKER
+        let audioUnlocked = false;
+        function unlockAudioForIOS() {
+            if (!audioUnlocked) {
+                audioPlayer.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+                let p = audioPlayer.play();
+                if (p !== undefined) {
+                    p.then(() => {
+                        audioPlayer.pause();
+                        audioPlayer.currentTime = 0;
+                    }).catch(() => {});
+                }
+                
+                let silentUtterance = new SpeechSynthesisUtterance('');
+                silentUtterance.volume = 0;
+                window.speechSynthesis.speak(silentUtterance);
+                
+                audioUnlocked = true;
+                document.body.removeEventListener('click', unlockAudioForIOS);
+                document.body.removeEventListener('touchstart', unlockAudioForIOS);
+            }
+        }
+        
+        btnMic.addEventListener('click', unlockAudioForIOS);
+        btnSend.addEventListener('click', unlockAudioForIOS);
+        document.body.addEventListener('click', unlockAudioForIOS);
+        document.body.addEventListener('touchstart', unlockAudioForIOS);
+
+        function stopAudioPlayback() {
+            if (!audioPlayer.paused) { audioPlayer.pause(); audioPlayer.currentTime = 0; }
+            if (currentAudioUrl) { URL.revokeObjectURL(currentAudioUrl); currentAudioUrl = null; }
+            window.speechSynthesis.cancel();
+            if (!isProcessing && !isRecording) { sallyOrb.className = 'orb'; }
+        }
+
+        document.getElementById('orbContainer').addEventListener('click', stopAudioPlayback);
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            btnMic.style.display = 'none';
+            appendMessage('system', 'WARNING: Browser does not support secure voice recognition uplink.');
+        }
+
+        btnMic.addEventListener('click', async () => {
+            if (isProcessing) return;
+            if (isRecording) {
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+                return;
+            }
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.onstart = function() {
+                    isRecording = true;
+                    stopAudioPlayback();
+                    btnMic.classList.add('mic-active');
+                    sallyOrb.className = 'orb listening';
+                    userInput.placeholder = "Recording audio signature...";
+                    userInput.disabled = true;
+                    statusText.innerText = "RADAR ACTIVE";
+                    statusText.className = "text-xs text-red-400 mono-text uppercase tracking-wider";
+                    audioChunks = [];
+                };
+                mediaRecorder.ondataavailable = function(e) {
+                    if (e.data.size > 0) audioChunks.push(e.data);
+                };
+                mediaRecorder.onstop = function() {
+                    stopRecordingUI();
+                    userInput.disabled = false;
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const reader = new FileReader();
+                    reader.readAsDataURL(audioBlob);
+                    reader.onloadend = () => {
+                        const base64data = reader.result.split(',')[1];
+                        sendCommand(base64data, 'audio/webm');
+                    };
+                    stream.getTracks().forEach(track => track.stop());
+                };
+                mediaRecorder.start();
+            } catch (err) {
+                appendMessage('system', 'Microphone Error: ' + err.message);
+                stopRecordingUI();
+            }
+        });
+
+        function stopRecordingUI() {
+            isRecording = false;
+            btnMic.classList.remove('mic-active');
+            statusText.innerText = isProcessing ? "ANALYZING..." : "SYSTEM SECURE";
+            statusText.className = "text-xs text-gray-300 mono-text uppercase tracking-wider";
+            userInput.placeholder = "Awaiting directives, Sir...";
+            if (!isProcessing) sallyOrb.className = 'orb';
+        }
+
+        userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter' && !isProcessing) sendCommand(); });
+        btnSend.addEventListener('click', () => { if (!isProcessing) sendCommand(); });
+
+        async function sendCommand(audioBase64 = null, mimeType = null) {
+            if (!audioBase64 && isRecording && mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                return; 
+            }
+
+            let originalMessage = userInput.value.trim();
+            if (!audioBase64 && !originalMessage) return;
+
+            stopAudioPlayback(); 
+
+            if (!audioBase64) {
+                appendMessage('user', originalMessage);
+                conversationHistory.push({ role: 'user', content: originalMessage });
+                if (conversationHistory.length > 6) conversationHistory.shift(); 
+            } else {
+                appendMessage('user', '[Encrypted Voice Signature Sent]');
+            }
+
+            userInput.value = '';
+            setProcessingState(true);
+            const typingId = showTypingIndicator();
+
+            const payload = { 
+                message: audioBase64 ? "Process attached audio payload." : originalMessage, 
+                history: conversationHistory 
+            };
+            
+            if (audioBase64) {
+                payload.audioBase64 = audioBase64;
+                payload.mimeType = mimeType;
+            }
+
+            try {
+                // HARDENED FETCH
+                const response = await fetch(WEB_APP_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify(payload)
+                });
+
+                const rawText = await response.text();
+                
+                let data;
+                try {
+                    data = JSON.parse(rawText);
+                } catch (parseErr) {
+                    console.error("RAW SERVER RESPONSE:", rawText);
+                    throw new Error("Target server returned HTML instead of JSON. Check console for raw output.");
+                }
+
+                if (data.error) throw new Error(data.error);
+                
+                if (audioBase64 && data.transcription) {
+                    conversationHistory.push({ role: 'user', content: data.transcription });
+                    if (conversationHistory.length > 6) conversationHistory.shift(); 
+                }
+
+                handleArchitectResponse(data, typingId);
+
+            } catch (error) {
+                removeElement(typingId);
+                setProcessingState(false);
+                appendMessage('system', `Uplink proxy failure: ${error.message}`);
+            }
+        }
+
+        function handleArchitectResponse(response, typingId) {
+            removeElement(typingId);
+            setProcessingState(false);
+
+            const responseText = response.text || response.reply || "Transmission received, but text payload was empty.";
+
+            if (responseText) {
+                conversationHistory.push({ role: 'model', content: responseText });
+                if (conversationHistory.length > 6) conversationHistory.shift();
+                appendMessage('sally', responseText);
+            }
+
+            if (response && response.audio) {
+                appendMessage('sally', `<div class="flex items-center space-x-3 text-red-400 font-mono text-xs tracking-widest uppercase"><i class="fas fa-wave-square animate-pulse"></i><span>Decrypting Audio Payload...</span></div>`, true);
+                playBase64PCM(response.audio);
+            } else if (responseText) {
+                appendMessage('system', '[API Audio missing. Engaging native device voice fallback.]');
+                playNativeVoice(responseText);
+            }
+        }
+
+        // ==========================================
+        // EMERGENCY NATIVE VOICE PROTOCOL
+        // ==========================================
+        function playNativeVoice(text) {
+            sallyOrb.className = 'orb speaking';
+            statusText.innerText = "TRANSMITTING";
+            statusText.className = "text-xs text-red-400 mono-text uppercase tracking-wider";
+
+            const cleanText = text.replace(/\[.*?\]/g, '').replace(/\*/g, '').trim();
+            const utterance = new SpeechSynthesisUtterance(cleanText);
+            
+            const voices = window.speechSynthesis.getVoices();
+            const preferredVoice = voices.find(v => 
+                v.name.includes('Samantha') || 
+                v.name.includes('Siri Female') || 
+                v.name.includes('Google US English')
+            );
+            
+            if (preferredVoice) utterance.voice = preferredVoice;
+            
+            utterance.rate = 1.05; 
+            utterance.pitch = 1.0;
+
+            utterance.onend = () => {
+                sallyOrb.className = 'orb'; 
+                statusText.innerText = "SYSTEM SECURE";
+                statusText.className = "text-xs text-gray-300 mono-text uppercase tracking-wider";
+            };
+
+            utterance.onerror = (e) => {
+                sallyOrb.className = 'orb';
+                statusText.innerText = "AUDIO ERROR";
+                appendMessage('system', '[Native audio engine failed to initialize.]');
+            };
+
+            if (voices.length === 0) {
+                window.speechSynthesis.onvoiceschanged = () => {
+                    utterance.voice = window.speechSynthesis.getVoices().find(v => v.name.includes('Samantha') || v.name.includes('Google US English'));
+                    window.speechSynthesis.speak(utterance);
+                };
+            } else {
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        function playBase64PCM(base64Data) {
+            try {
+                sallyOrb.className = 'orb speaking';
+                statusText.innerText = "TRANSMITTING";
+                statusText.className = "text-xs text-red-400 mono-text uppercase tracking-wider";
+                
+                const binaryString = window.atob(base64Data);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) { bytes[i] = binaryString.charCodeAt(i); }
+                
+                const buffer = new ArrayBuffer(44 + bytes.length);
+                const view = new DataView(buffer);
+                const writeString = (v, o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+                
+                writeString(view, 0, 'RIFF');
+                view.setUint32(4, 36 + bytes.length, true);
+                writeString(view, 8, 'WAVE');
+                writeString(view, 12, 'fmt ');
+                view.setUint32(16, 16, true); 
+                view.setUint16(20, 1, true); 
+                view.setUint16(22, 1, true); 
+                view.setUint32(24, 24000, true); 
+                view.setUint32(28, 24000 * 2, true); 
+                view.setUint16(32, 2, true); 
+                view.setUint16(34, 16, true); 
+                writeString(view, 36, 'data');
+                view.setUint32(40, bytes.length, true);
+                
+                new Uint8Array(buffer, 44).set(bytes);
+                
+                currentAudioUrl = URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
+                audioPlayer.src = currentAudioUrl;
+                audioPlayer.load();
+                
+                audioPlayer.playbackRate = 1.0; 
+                
+                audioPlayer.onended = () => {
+                    sallyOrb.className = 'orb'; 
+                    statusText.innerText = "SYSTEM SECURE";
+                    statusText.className = "text-xs text-gray-300 mono-text uppercase tracking-wider";
+                    URL.revokeObjectURL(currentAudioUrl); 
+                    currentAudioUrl = null;
+                };
+                
+                let playPromise = audioPlayer.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        console.error("Playback Blocked:", error);
+                        sallyOrb.className = 'orb';
+                        statusText.innerText = "AUDIO BLOCKED";
+                        appendMessage('system', '[Audio playback blocked by browser restrictions. Tap anywhere on the tactical screen to wake up the drivers.]');
+                    });
+                }
+            } catch (error) {
+                sallyOrb.className = 'orb';
+                statusText.innerText = "DECRYPTION ERROR";
+                appendMessage('system', '[Failed to decode audio payload. The binary stream was corrupted.]');
+            }
+        }
+
+        function appendMessage(sender, text, isHtml = false) {
+            const div = document.createElement('div');
+            if (sender === 'user') {
+                div.className = `message self-end max-w-[85%] flex items-start space-x-3 flex-row-reverse space-x-reverse`;
+                let iconHtml = `<div class="w-10 h-10 rounded bg-blue-900/40 flex items-center justify-center border border-blue-500/50 flex-shrink-0 shadow-[0_0_15px_rgba(59,130,246,0.2)]"><i class="fas fa-user-tie text-blue-400 text-sm"></i></div>`;
+                let finalContent = isHtml ? text : text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                div.innerHTML = `${iconHtml}<div class="bg-gray-800/80 rounded-l-lg rounded-br-lg p-4 border border-gray-700 shadow-lg relative overflow-hidden"><div class="absolute right-0 top-0 bottom-0 w-1 bg-blue-500"></div><p class="text-gray-100 leading-relaxed whitespace-pre-wrap">${finalContent}</p></div>`;
+            } else if (sender === 'sally') {
+                div.className = `message self-start max-w-[85%] flex items-start space-x-3`;
+                let iconHtml = `<div class="w-10 h-10 rounded bg-red-900/40 flex items-center justify-center border border-red-500/50 flex-shrink-0 shadow-[0_0_15px_rgba(239,68,68,0.2)]"><i class="fas fa-shield-halved text-red-500 text-sm"></i></div>`;
+                let finalContent = isHtml ? text : text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                div.innerHTML = `${iconHtml}<div class="bg-gray-800/80 rounded-r-lg rounded-bl-lg p-4 border border-gray-700 shadow-lg relative overflow-hidden"><div class="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></div><p class="text-gray-200 leading-relaxed whitespace-pre-wrap">${finalContent}</p></div>`;
+            } else {
+                div.className = `message self-center max-w-[80%] flex items-center space-x-2`;
+                div.innerHTML = `<i class="fas fa-exclamation-triangle text-yellow-500 text-sm"></i><div class="bg-yellow-900/20 rounded px-4 py-2 border border-yellow-700/50"><p class="text-yellow-300 mono-text text-xs whitespace-pre-wrap">${text}</p></div>`;
+            }
+            chatLog.appendChild(div);
+            chatLog.scrollTop = chatLog.scrollHeight;
+        }
+
+        function showTypingIndicator() {
+            const id = 'typing-' + Date.now();
+            const div = document.createElement('div');
+            div.id = id;
+            div.className = `message self-start max-w-[80%] flex items-start space-x-3`;
+            div.innerHTML = `
+                <div class="w-10 h-10 rounded bg-red-900/40 flex items-center justify-center border border-red-500/50 flex-shrink-0">
+                    <i class="fas fa-shield-halved text-red-500 text-sm"></i>
+                </div>
+                <div class="bg-gray-800/80 rounded-r-lg rounded-bl-lg py-4 px-5 border border-gray-700 flex space-x-2 h-12 items-center relative overflow-hidden">
+                    <div class="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></div>
+                    <div class="w-2 h-2 bg-red-500 rounded-full typing-dot"></div>
+                    <div class="w-2 h-2 bg-red-500 rounded-full typing-dot"></div>
+                    <div class="w-2 h-2 bg-red-500 rounded-full typing-dot"></div>
+                </div>`;
+            chatLog.appendChild(div);
+            chatLog.scrollTop = chatLog.scrollHeight;
+            return id;
+        }
+
+        function setProcessingState(state) {
+            isProcessing = state; btnSend.disabled = state; userInput.disabled = state; btnMic.disabled = state;
+            if (state) {
+                sallyOrb.className = 'orb processing'; 
+                statusText.innerText = "ANALYZING TACTICAL DATA..."; 
+                statusText.className = "text-xs text-blue-400 mono-text uppercase tracking-wider";
+                btnSend.innerHTML = `<i class="fas fa-circle-notch fa-spin"></i>`;
+            } else {
+                if (!isRecording) {
+                    sallyOrb.className = 'orb'; 
+                    statusText.innerText = "SYSTEM SECURE"; 
+                    statusText.className = "text-xs text-gray-300 mono-text uppercase tracking-wider";
+                }
+                btnSend.innerHTML = `<span>Execute</span><i class="fas fa-satellite-dish"></i>`; 
+                userInput.focus();
+            }
+        }
+
+        function removeElement(id) { const el = document.getElementById(id); if (el) el.remove(); }
+    </script>
+</body>
+</html>
